@@ -1,0 +1,17 @@
+{
+  "name": "Child Transport Safety Center",
+  "short_name": "Bus Tracker",
+  "description": "Real-time school bus tracking and safety application",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    {
+      "src": "/linga_logo.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

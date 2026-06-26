@@ -1,0 +1,102 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && getUserData().role == 'admin';
+    }
+
+    function isParent() {
+      return isAuthenticated() && getUserData().role == 'parent';
+    }
+
+    function isStudent() {
+      return isAuthenticated() && getUserData().role == 'student';
+    }
+
+    function isDriver() {
+      return isAuthenticated() && getUserData().role == 'driver';
+    }
+
+    function matchesSchool(schoolId) {
+      return getUserData().schoolId == schoolId;
+    }
+
+    // 1. Users Collection
+    match /users/{userId} {
+      allow read, write: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+    }
+
+    // 2. Schools Collection
+    match /schools/{schoolId} {
+      allow read: if isAuthenticated() && matchesSchool(schoolId);
+      allow write: if isAdmin() && matchesSchool(schoolId);
+    }
+
+    // 3. Students Collection
+    match /students/{studentId} {
+      allow read: if isAdmin() 
+        || (isStudent() && request.auth.uid == studentId) 
+        || (isParent() && resource.data.parentId == request.auth.uid);
+      allow write: if isAdmin();
+    }
+
+    // 4. Parents Collection
+    match /parents/{parentId} {
+      allow read: if isAdmin() || (isParent() && request.auth.uid == parentId);
+      allow write: if isAdmin();
+    }
+
+    // 5. Drivers Collection
+    match /drivers/{driverId} {
+      allow read: if isAuthenticated() && matchesSchool(resource.data.schoolId);
+      allow write: if isAdmin();
+    }
+
+    // 6. Buses Collection
+    match /buses/{busId} {
+      allow read: if isAuthenticated() && matchesSchool(resource.data.schoolId);
+      allow write: if isAdmin();
+    }
+
+    // 7. Routes Collection
+    match /routes/{routeId} {
+      allow read: if isAuthenticated() && matchesSchool(resource.data.schoolId);
+      allow write: if isAdmin();
+    }
+
+    // 8. GPS Tracking Collection (Historical Logs)
+    match /gpsTracking/{logId} {
+      allow read: if isAdmin() && matchesSchool(resource.data.schoolId);
+      allow write: if isAdmin() || isAuthenticated(); // Allow server-backed writes
+    }
+
+    // 9. Announcements Collection
+    match /announcements/{annId} {
+      allow read: if isAuthenticated() && matchesSchool(resource.data.schoolId);
+      allow write: if isAdmin();
+    }
+
+    // 10. Notifications Collection
+    match /notifications/{notifId} {
+      allow read, update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create, delete: if isAdmin() || isAuthenticated();
+    }
+
+    // 11. Emergency Logs Collection (SOS Alerts)
+    match /emergencyLogs/{logId} {
+      allow read: if isAuthenticated() && matchesSchool(resource.data.schoolId);
+      allow create: if isAuthenticated(); // Allow any user to trigger SOS
+      allow update: if isAdmin(); // Only admins resolve SOS
+    }
+  }
+}
