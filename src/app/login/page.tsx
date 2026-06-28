@@ -221,6 +221,90 @@ export default function LoginPage() {
         }
       }
 
+      // 2.5. Check if email belongs to a Pre-registered Admin
+      const adminQuery = query(collection(db, 'admins'), where('email', '==', email));
+      const adminSnap = await getDocs(adminQuery);
+
+      if (!adminSnap.empty) {
+        const adminDoc = adminSnap.docs[0];
+        const adminData = adminDoc.data();
+
+        // Enforce password match
+        if (adminData.password !== password) {
+          throw { code: 'auth/wrong-password', message: 'Incorrect password.' };
+        }
+
+        let user;
+        try {
+          // Try to sign in with typed email & password in Firebase Auth
+          const userCredential = await signInWithEmailAndPassword(auth, email, password);
+          user = userCredential.user;
+        } catch (err: any) {
+          if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+            // First time admin login: auto-register in Firebase Auth
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            user = userCredential.user;
+
+            const profile = {
+              uid: user.uid,
+              email: user.email,
+              displayName: adminData.name,
+              role: 'admin',
+              schoolId: adminData.schoolId,
+              active: true,
+              createdAt: serverTimestamp()
+            };
+            // Create user profile
+            await setDoc(doc(db, 'users', user.uid), profile);
+
+            // Clean up by deleting the admin pre-registration record
+            await deleteDoc(doc(db, 'admins', adminDoc.id));
+
+            // Fetch school data
+            let schoolData = null;
+            if (profile.schoolId) {
+              const schoolSnap = await getDoc(doc(db, 'schools', profile.schoolId));
+              if (schoolSnap.exists()) {
+                schoolData = schoolSnap.data();
+              }
+            }
+
+            // Cache credentials in localstorage
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('smartbus_user', JSON.stringify({ ...profile, createdAt: new Date().toISOString() }));
+              if (schoolData) {
+                localStorage.setItem('smartbus_school', JSON.stringify({ ...schoolData, createdAt: new Date().toISOString() }));
+              }
+            }
+
+            router.push('/admin/dashboard');
+            return;
+          }
+          throw err;
+        }
+
+        // Admin logged in successfully via Firebase Auth
+        const profileSnap = await getDoc(doc(db, 'users', user.uid));
+        if (profileSnap.exists()) {
+          const profile = profileSnap.data();
+          let schoolData = null;
+          if (profile.schoolId) {
+            const schoolSnap = await getDoc(doc(db, 'schools', profile.schoolId));
+            if (schoolSnap.exists()) {
+              schoolData = schoolSnap.data();
+            }
+          }
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('smartbus_user', JSON.stringify(profile));
+            if (schoolData) {
+              localStorage.setItem('smartbus_school', JSON.stringify(schoolData));
+            }
+          }
+          router.push('/admin/dashboard');
+          return;
+        }
+      }
+
       // 3. Otherwise, normal Admin or general User Login
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;

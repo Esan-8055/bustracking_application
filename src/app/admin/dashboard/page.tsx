@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { collection, query, where, onSnapshot, getDocs, doc, setDoc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getDocs, doc, setDoc, updateDoc, addDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { db } from '@/firebase/config';
 import { useAppStore } from '@/store/useStore';
 import { Users, UserCheck, ShieldCheck, Bus as BusIcon, AlertOctagon, Megaphone, Bell, Sparkles, Navigation } from 'lucide-react';
@@ -17,6 +17,14 @@ export default function AdminDashboard() {
   const [sosLogs, setSosLogs] = useState<EmergencyLog[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [routes, setRoutes] = useState<Route[]>([]);
+  const [adminName, setAdminName] = useState('');
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminSuccess, setAdminSuccess] = useState('');
+  const [adminError, setAdminError] = useState('');
+  const [activeAdmins, setActiveAdmins] = useState<any[]>([]);
+  const [pendingAdmins, setPendingAdmins] = useState<any[]>([]);
   const [seeding, setSeeding] = useState(false);
   const [seedSuccess, setSeedSuccess] = useState(false);
   const [error, setError] = useState('');
@@ -74,6 +82,20 @@ export default function AdminDashboard() {
       setRoutes(list);
     });
 
+    const qActiveAdmins = query(collection(db, 'users'), where('schoolId', '==', school.id), where('role', '==', 'admin'));
+    const unsubActiveAdmins = onSnapshot(qActiveAdmins, (snap) => {
+      const list: any[] = [];
+      snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
+      setActiveAdmins(list);
+    });
+
+    const qPendingAdmins = query(collection(db, 'admins'), where('schoolId', '==', school.id));
+    const unsubPendingAdmins = onSnapshot(qPendingAdmins, (snap) => {
+      const list: any[] = [];
+      snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
+      setPendingAdmins(list);
+    });
+
     return () => {
       unsubStudents();
       unsubParents();
@@ -82,6 +104,8 @@ export default function AdminDashboard() {
       unsubSos();
       unsubAnn();
       unsubRoutes();
+      unsubActiveAdmins();
+      unsubPendingAdmins();
     };
   }, [school]);
 
@@ -194,6 +218,47 @@ export default function AdminDashboard() {
       console.error(err);
     } finally {
       setSeeding(false);
+    }
+  };
+
+  const handleAddAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!school || !adminName || !adminEmail || !adminPassword) return;
+    setAdminLoading(true);
+    setAdminSuccess('');
+    setAdminError('');
+
+    try {
+      // Check if email is already in users or admins
+      const qUserCheck = query(collection(db, 'users'), where('email', '==', adminEmail));
+      const userCheckSnap = await getDocs(qUserCheck);
+
+      const qAdminCheck = query(collection(db, 'admins'), where('email', '==', adminEmail));
+      const adminCheckSnap = await getDocs(qAdminCheck);
+
+      if (!userCheckSnap.empty || !adminCheckSnap.empty) {
+        setAdminError('This email is already registered as an administrator or pending registration.');
+        setAdminLoading(false);
+        return;
+      }
+
+      await addDoc(collection(db, 'admins'), {
+        name: adminName,
+        email: adminEmail,
+        password: adminPassword,
+        schoolId: school.id,
+        createdAt: serverTimestamp()
+      });
+
+      setAdminSuccess('Admin invited successfully! They can now log in using this email and password.');
+      setAdminName('');
+      setAdminEmail('');
+      setAdminPassword('');
+    } catch (err: any) {
+      console.error(err);
+      setAdminError(err.message || 'Failed to add administrator.');
+    } finally {
+      setAdminLoading(false);
     }
   };
 
@@ -427,6 +492,102 @@ export default function AdminDashboard() {
               ))
             )}
           </div>
+        </div>
+
+        {/* Admin Management Panel */}
+        <div className="glass-panel rounded-2xl p-6 space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-900 pb-4">
+            <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <Users className="h-4 w-4 text-yellow-500" />
+              Admin Control Panel
+            </h3>
+          </div>
+
+          {adminSuccess && (
+            <div className="p-3 bg-blue-950/40 border border-blue-800 text-blue-300 rounded-xl text-[10px] leading-relaxed">
+              {adminSuccess}
+            </div>
+          )}
+
+          {adminError && (
+            <div className="p-3 bg-rose-950/30 border border-rose-900/50 rounded-xl text-rose-300 text-[10px] leading-relaxed">
+              {adminError}
+            </div>
+          )}
+
+          <form onSubmit={handleAddAdmin} className="space-y-3.5">
+            <div className="space-y-1">
+              <label className="text-[10px] text-slate-400">Full Name</label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. Baskar J"
+                value={adminName}
+                onChange={(e) => setAdminName(e.target.value)}
+                className="w-full bg-slate-950/60 border border-slate-900 focus:border-yellow-500 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-700 outline-none"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] text-slate-400">Email Address</label>
+              <input
+                type="email"
+                required
+                placeholder="e.g. baskar@gmail.com"
+                value={adminEmail}
+                onChange={(e) => setAdminEmail(e.target.value)}
+                className="w-full bg-slate-950/60 border border-slate-900 focus:border-yellow-500 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-700 outline-none"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] text-slate-400">Default Password</label>
+              <input
+                type="password"
+                required
+                placeholder="••••••••"
+                value={adminPassword}
+                onChange={(e) => setAdminPassword(e.target.value)}
+                className="w-full bg-slate-950/60 border border-slate-900 focus:border-yellow-500 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-700 outline-none"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={adminLoading}
+              className="w-full py-2.5 bg-yellow-500 hover:bg-yellow-400 text-slate-950 text-xs font-bold rounded-xl disabled:opacity-50 transition-all cursor-pointer shadow-sm active:scale-[0.98]"
+            >
+              {adminLoading ? 'Adding...' : 'Register New Admin'}
+            </button>
+          </form>
+
+          {/* List of Active Admins */}
+          <div className="space-y-2 pt-2 border-t border-slate-900">
+            <p className="text-[9px] text-slate-500 font-mono tracking-widest uppercase">Active Admins ({activeAdmins.length})</p>
+            <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
+              {activeAdmins.map((adm) => (
+                <div key={adm.id} className="flex justify-between items-center px-2 py-1.5 bg-slate-950/30 border border-slate-900/60 rounded-lg text-[10px]">
+                  <span className="text-slate-300 font-semibold truncate max-w-[120px]">{adm.displayName}</span>
+                  <span className="text-slate-500 font-mono">{adm.email}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* List of Pending Invites */}
+          {pendingAdmins.length > 0 && (
+            <div className="space-y-2 pt-2 border-t border-slate-900">
+              <p className="text-[9px] text-yellow-500/80 font-mono tracking-widest uppercase">Pending Invitations ({pendingAdmins.length})</p>
+              <div className="space-y-1.5 max-h-[100px] overflow-y-auto pr-1">
+                {pendingAdmins.map((adm) => (
+                  <div key={adm.id} className="flex justify-between items-center px-2 py-1.5 bg-yellow-500/5 border border-yellow-500/10 rounded-lg text-[10px]">
+                    <span className="text-yellow-600 font-semibold truncate max-w-[120px]">{adm.name}</span>
+                    <span className="text-slate-500 font-mono">{adm.email}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
