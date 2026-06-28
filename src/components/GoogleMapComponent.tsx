@@ -2,7 +2,7 @@
 
 import React, { useCallback, useState, useEffect } from 'react';
 import { GoogleMap, useJsApiLoader, Marker, Polyline, Circle, InfoWindow } from '@react-google-maps/api';
-import { LatLng, RouteStop } from '@/types';
+import { LatLng, RouteStop, Route } from '@/types';
 
 // Sleek dark-mode theme JSON for Google Maps
 const darkMapStyle = [
@@ -114,6 +114,7 @@ interface GoogleMapComponentProps {
   buses?: MapBus[];
   stops?: RouteStop[];
   routePath?: LatLng[];
+  routes?: Route[];
   center?: LatLng;
   zoom?: number;
   showGeofences?: boolean;
@@ -124,6 +125,7 @@ export default function GoogleMapComponent({
   buses = [],
   stops = [],
   routePath = [],
+  routes = [],
   center,
   zoom = 13,
   showGeofences = false,
@@ -193,7 +195,7 @@ export default function GoogleMapComponent({
         onLoad={onLoad}
         onUnmount={onUnmount}
         options={{
-          styles: [],
+          styles: darkMapStyle,
           disableDefaultUI: false,
           zoomControl: true,
           streetViewControl: false,
@@ -201,7 +203,59 @@ export default function GoogleMapComponent({
           fullscreenControl: true
         }}
       >
-        {/* 1. Draw Route Path Polyline */}
+        {/* 1. Draw Route Path Polylines & Stops for all routes in routes array */}
+        {routes.map((r) => (
+          <React.Fragment key={r.id}>
+            {r.coordinates && r.coordinates.length > 0 && (
+              <Polyline
+                path={r.coordinates}
+                options={{
+                  strokeColor: '#3b82f6',
+                  strokeOpacity: 0.8,
+                  strokeWeight: 4,
+                  geodesic: true
+                }}
+              />
+            )}
+            {r.stops && r.stops.map((stop) => (
+              <React.Fragment key={stop.id}>
+                {showGeofences && (
+                  <Circle
+                    center={{ lat: stop.lat, lng: stop.lng }}
+                    radius={200}
+                    options={{
+                      strokeColor: '#3b82f6',
+                      strokeOpacity: 0.4,
+                      strokeWeight: 1,
+                      fillColor: '#3b82f6',
+                      fillOpacity: 0.1
+                    }}
+                  />
+                )}
+                <Marker
+                  position={{ lat: stop.lat, lng: stop.lng }}
+                  label={{
+                    text: stop.order.toString(),
+                    color: '#ffffff',
+                    fontWeight: 'bold',
+                    fontSize: '11px'
+                  }}
+                  icon={{
+                    path: google.maps.SymbolPath.CIRCLE,
+                    fillColor: '#3b82f6',
+                    fillOpacity: 1,
+                    strokeColor: '#ffffff',
+                    strokeWeight: 2,
+                    scale: 12
+                  }}
+                  title={`${stop.name} (Stop #${stop.order})`}
+                />
+              </React.Fragment>
+            ))}
+          </React.Fragment>
+        ))}
+
+        {/* 2. Fallback: Draw Route Path Polyline for single routePath prop */}
         {routePath.length > 0 && (
           <Polyline
             path={routePath}

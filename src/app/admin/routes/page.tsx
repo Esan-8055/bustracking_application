@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/firebase/config';
 import { useAppStore } from '@/store/useStore';
-import { Route as RouteIcon, MapPin, Compass, Plus, PlusCircle, AlertCircle } from 'lucide-react';
+import { Route as RouteIcon, MapPin, Compass, Plus, PlusCircle, AlertCircle, Edit2, Trash2, X, GripVertical } from 'lucide-react';
 import { Route, RouteStop } from '@/types';
 
 export default function AdminRoutesPage() {
@@ -18,7 +18,9 @@ export default function AdminRoutesPage() {
   const [stopName, setStopName] = useState('');
   const [stopLat, setStopLat] = useState('');
   const [stopLng, setStopLng] = useState('');
-  const [stopsList, setStopsList] = useState<Omit<RouteStop, 'id'>[]>([]);
+  const [stopsList, setStopsList] = useState<RouteStop[]>([]);
+  const [editingRoute, setEditingRoute] = useState<Route | null>(null);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -55,6 +57,7 @@ export default function AdminRoutesPage() {
     setStopsList([
       ...stopsList,
       {
+        id: `stop-${Date.now()}-${stopsList.length}`,
         name: stopName,
         order: stopsList.length + 1,
         lat,
@@ -68,37 +71,90 @@ export default function AdminRoutesPage() {
     setError('');
   };
 
-  const handleCreateRoute = async (e: React.FormEvent) => {
+  const handleRemoveStop = (index: number) => {
+    const updated = stopsList.filter((_, i) => i !== index).map((stop, idx) => ({
+      ...stop,
+      order: idx + 1
+    }));
+    setStopsList(updated);
+  };
+
+  const handleDrop = (targetIndex: number) => {
+    if (draggedIndex === null || draggedIndex === targetIndex) return;
+
+    const list = [...stopsList];
+    const draggedItem = list[draggedIndex];
+
+    // Remove from old position
+    list.splice(draggedIndex, 1);
+    // Insert at new position
+    list.splice(targetIndex, 0, draggedItem);
+
+    // Re-sequence orders
+    const updatedList = list.map((stop, idx) => ({
+      ...stop,
+      order: idx + 1
+    }));
+
+    setStopsList(updatedList);
+    setDraggedIndex(null);
+  };
+
+  const handleEdit = (route: Route) => {
+    setEditingRoute(route);
+    setName(route.name);
+    setDescription(route.description);
+    setStopsList(route.stops || []);
+  };
+
+  const handleDeleteRoute = async (routeId: string) => {
+    if (!confirm('Are you sure you want to delete this route? This will affect buses assigned to this route.')) return;
+    try {
+      await deleteDoc(doc(db, 'routes', routeId));
+      if (selectedRoute?.id === routeId) {
+        setSelectedRoute(null);
+      }
+      alert('Route deleted successfully');
+    } catch (err: any) {
+      console.error('Error deleting route:', err);
+      alert('Failed to delete route: ' + err.message);
+    }
+  };
+
+  const handleSaveRoute = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !school) return;
     setLoading(true);
     setError('');
 
     try {
-      const stopsWithIds = stopsList.map((stop, index) => ({
-        id: `stop-${Date.now()}-${index}`,
-        ...stop
-      }));
-
       // Coordinates path polyline
-      const coordinates = stopsWithIds.map((stop) => ({
+      const coordinates = stopsList.map((stop) => ({
         lat: stop.lat,
         lng: stop.lng
       }));
 
-      await addDoc(collection(db, 'routes'), {
+      const payload = {
         name,
         description,
         schoolId: school.id,
-        stops: stopsWithIds,
+        stops: stopsList,
         coordinates
-      });
+      };
+
+      if (editingRoute) {
+        await updateDoc(doc(db, 'routes', editingRoute.id), payload);
+        alert('Route updated successfully!');
+        setEditingRoute(null);
+      } else {
+        await addDoc(collection(db, 'routes'), payload);
+        alert('Route created successfully!');
+      }
 
       setName('');
       setDescription('');
       setStopsList([]);
       setError('');
-      alert('Route created successfully!');
     } catch (err: any) {
       console.error(err);
       setError(err.message || 'Failed to save route. Please try again.');
@@ -128,21 +184,41 @@ export default function AdminRoutesPage() {
                 <p className="text-xs text-slate-600 py-6 text-center">No routes mapped yet.</p>
               ) : (
                 routes.map((route) => (
-                  <button
+                  <div
                     key={route.id}
-                    onClick={() => setSelectedRoute(route)}
-                    className={`w-full text-left p-3.5 rounded-xl border text-xs transition-all flex flex-col gap-1 ${
+                    className={`w-full p-3.5 rounded-xl border text-xs transition-all flex justify-between items-start gap-2 ${
                       selectedRoute?.id === route.id
                         ? 'bg-yellow-500/10 border-yellow-500 text-white'
                         : 'bg-slate-950/40 border-slate-900 hover:border-slate-800 text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    <span className="font-bold text-sm text-slate-200">{route.name}</span>
-                    <span className="text-[11px] text-slate-500 truncate max-w-full">{route.description}</span>
-                    <span className="text-[10px] text-yellow-500 font-mono mt-1 font-semibold">
-                      {route.stops?.length || 0} stops configured
-                    </span>
-                  </button>
+                    <div
+                      onClick={() => setSelectedRoute(route)}
+                      className="flex-grow cursor-pointer flex flex-col gap-1 overflow-hidden"
+                    >
+                      <span className="font-bold text-sm text-slate-200">{route.name}</span>
+                      <span className="text-[11px] text-slate-500 truncate max-w-full">{route.description}</span>
+                      <span className="text-[10px] text-yellow-500 font-mono mt-1 font-semibold">
+                        {route.stops?.length || 0} stops configured
+                      </span>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <button
+                        onClick={() => handleEdit(route)}
+                        className="p-1 hover:text-yellow-500 text-slate-500 transition-all"
+                        title="Edit Route"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteRoute(route.id)}
+                        className="p-1 hover:text-rose-500 text-slate-500 transition-all"
+                        title="Delete Route"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
                 ))
               )}
             </div>
@@ -176,7 +252,7 @@ export default function AdminRoutesPage() {
           <div className="glass-panel p-4 sm:p-6 rounded-2xl border border-slate-900">
             <h3 className="text-base font-bold text-white mb-4 flex items-center gap-2">
               <PlusCircle className="h-5 w-5 text-yellow-500" />
-              Design New School Route
+              {editingRoute ? 'Edit Configured Route' : 'Design New School Route'}
             </h3>
 
             {error && (
@@ -186,7 +262,7 @@ export default function AdminRoutesPage() {
               </div>
             )}
 
-            <form onSubmit={handleCreateRoute} className="space-y-5">
+            <form onSubmit={handleSaveRoute} className="space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-slate-400">Route Name</label>
@@ -265,30 +341,74 @@ export default function AdminRoutesPage() {
                 {/* Scheduled Stops Preview */}
                 {stopsList.length > 0 && (
                   <div className="space-y-1.5 pt-2">
-                    <p className="text-[10px] text-slate-500 font-mono">STOPS IN QUEUE ({stopsList.length})</p>
+                    <p className="text-[10px] text-slate-500 font-mono">STOPS IN QUEUE ({stopsList.length}) — DRAG TO REORDER</p>
                     <div className="divide-y divide-slate-900 border border-slate-900 rounded-lg bg-slate-950/60">
-                      {stopsList.map((stop, idx) => (
-                        <div key={idx} className="flex justify-between items-center px-3 py-2 text-xs">
-                          <span className="font-semibold text-slate-300">
-                            {stop.order}. {stop.name}
-                          </span>
-                          <span className="font-mono text-slate-500">
-                            {stop.lat.toFixed(4)}, {stop.lng.toFixed(4)}
-                          </span>
-                        </div>
-                      ))}
+                      {stopsList.map((stop, idx) => {
+                        const isDragging = draggedIndex === idx;
+                        return (
+                          <div
+                            key={stop.id || idx}
+                            draggable
+                            onDragStart={() => setDraggedIndex(idx)}
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={() => handleDrop(idx)}
+                            onDragEnd={() => setDraggedIndex(null)}
+                            className={`flex justify-between items-center px-3 py-3 text-xs transition-all cursor-grab active:cursor-grabbing select-none ${
+                              isDragging
+                                ? 'opacity-40 border-2 border-dashed border-yellow-500/40 bg-yellow-500/5'
+                                : 'hover:bg-slate-900/30'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <GripVertical className="h-3.5 w-3.5 text-slate-600 shrink-0" />
+                              <span className="font-semibold text-slate-300">
+                                {stop.order}. {stop.name}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2.5 font-mono text-slate-500">
+                              <span>
+                                {stop.lat.toFixed(4)}, {stop.lng.toFixed(4)}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveStop(idx)}
+                                className="p-1 hover:text-rose-500 text-slate-500 transition-all flex items-center justify-center"
+                                title="Remove Stop"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
               </div>
 
-              <button
-                type="submit"
-                disabled={loading || stopsList.length === 0}
-                className="w-full py-3 bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm shadow-lg shadow-yellow-500/5 hover:shadow-yellow-500/15"
-              >
-                {loading ? 'Saving Route...' : 'Save & Publish Route'}
-              </button>
+              <div className="flex gap-2">
+                {editingRoute && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingRoute(null);
+                      setName('');
+                      setDescription('');
+                      setStopsList([]);
+                    }}
+                    className="flex-1 py-3 border border-slate-800 hover:border-slate-700 hover:text-white rounded-xl text-slate-400 font-bold transition-all text-xs"
+                  >
+                    Cancel Edit
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  disabled={loading || stopsList.length === 0}
+                  className="flex-grow py-3 bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm shadow-lg shadow-yellow-500/5 hover:shadow-yellow-500/15"
+                >
+                  {loading ? 'Saving Route...' : editingRoute ? 'Update & Save Route' : 'Save & Publish Route'}
+                </button>
+              </div>
             </form>
           </div>
         </div>

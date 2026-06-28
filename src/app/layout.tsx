@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import AuthGuard from "@/components/AuthGuard";
@@ -17,6 +17,9 @@ export const metadata: Metadata = {
   title: "LINGA School Bus | School Transport & Live GPS Tracking Portal",
   description: "Enterprise multi-tenant real-time school bus fleet tracking, driver mapping, ETA predictions, and student transport management platform.",
   manifest: "/manifest.json",
+};
+
+export const viewport: Viewport = {
   themeColor: "#ffffff",
 };
 

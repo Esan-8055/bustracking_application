@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { collection, doc, getDoc, getDocs, query, where, updateDoc, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { db } from '@/firebase/config';
+import { sendStopNotificationEmail } from '@/utils/emailService';
 
 // Haversine formula to compute distance in meters
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -100,6 +101,14 @@ export async function POST(request: Request) {
             const duplicateCheck = await getDocs(notificationQuery);
 
             if (duplicateCheck.empty) {
+              // Send live email notification alerts to the supervisors
+              await sendStopNotificationEmail(
+                busData.busNumber || 'Unknown',
+                busData.plateNumber || 'Unknown',
+                stop.name,
+                busSpeed
+              );
+
               // Retrieve students assigned to this stop and bus
               const studentsQuery = query(
                 collection(db, 'students'),

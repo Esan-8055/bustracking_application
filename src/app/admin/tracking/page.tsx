@@ -6,23 +6,24 @@ import { db } from '@/firebase/config';
 import { useAppStore } from '@/store/useStore';
 import { Navigation, Compass, AlertCircle, RefreshCw, Radio } from 'lucide-react';
 import GoogleMapComponent from '@/components/GoogleMapComponent';
-import { Bus, LatLng } from '@/types';
+import { Bus, LatLng, Route } from '@/types';
 
 export default function AdminTrackingPage() {
   const { school } = useAppStore();
   const [buses, setBuses] = useState<Bus[]>([]);
   const [mapCenter, setMapCenter] = useState<LatLng | undefined>(undefined);
   const [selectedBusId, setSelectedBusId] = useState<string | null>(null);
+  const [routes, setRoutes] = useState<Route[]>([]);
 
   useEffect(() => {
     if (!school) return;
 
-    const q = query(
+    const qBuses = query(
       collection(db, 'buses'),
       where('schoolId', '==', school.id)
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubBuses = onSnapshot(qBuses, (snapshot) => {
       const list: Bus[] = [];
       snapshot.forEach((doc) => {
         list.push({ id: doc.id, ...doc.data() } as Bus);
@@ -41,7 +42,23 @@ export default function AdminTrackingPage() {
       }
     });
 
-    return () => unsubscribe();
+    const qRoutes = query(
+      collection(db, 'routes'),
+      where('schoolId', '==', school.id)
+    );
+
+    const unsubRoutes = onSnapshot(qRoutes, (snapshot) => {
+      const list: Route[] = [];
+      snapshot.forEach((doc) => {
+        list.push({ id: doc.id, ...doc.data() } as Route);
+      });
+      setRoutes(list);
+    });
+
+    return () => {
+      unsubBuses();
+      unsubRoutes();
+    };
   }, [school, mapCenter]);
 
   const handleSelectBus = (bus: Bus) => {
@@ -126,6 +143,7 @@ export default function AdminTrackingPage() {
       <div className="flex-1 glass-panel p-2 rounded-3xl border border-slate-900 relative overflow-hidden" style={{ minHeight: '320px', height: '100%' }}>
         <GoogleMapComponent
           buses={formattedBuses}
+          routes={routes}
           center={mapCenter}
           zoom={14}
           showGeofences={true}

@@ -5,7 +5,7 @@ import { collection, query, where, onSnapshot, getDocs, doc, setDoc, updateDoc, 
 import { db } from '@/firebase/config';
 import { useAppStore } from '@/store/useStore';
 import { Users, UserCheck, ShieldCheck, Bus as BusIcon, AlertOctagon, Megaphone, Bell, Sparkles, Navigation } from 'lucide-react';
-import { Student, Parent, Driver, Bus, EmergencyLog, Announcement } from '@/types';
+import { Student, Parent, Driver, Bus, EmergencyLog, Announcement, Route } from '@/types';
 import GoogleMapComponent from '@/components/GoogleMapComponent';
 
 export default function AdminDashboard() {
@@ -16,6 +16,7 @@ export default function AdminDashboard() {
   const [buses, setBuses] = useState<Bus[]>([]);
   const [sosLogs, setSosLogs] = useState<EmergencyLog[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [routes, setRoutes] = useState<Route[]>([]);
   const [seeding, setSeeding] = useState(false);
   const [seedSuccess, setSeedSuccess] = useState(false);
   const [error, setError] = useState('');
@@ -66,6 +67,13 @@ export default function AdminDashboard() {
       setAnnouncements(list);
     });
 
+    const qRoutes = query(collection(db, 'routes'), where('schoolId', '==', school.id));
+    const unsubRoutes = onSnapshot(qRoutes, (snap) => {
+      const list: Route[] = [];
+      snap.forEach((d) => list.push({ id: d.id, ...d.data() } as Route));
+      setRoutes(list);
+    });
+
     return () => {
       unsubStudents();
       unsubParents();
@@ -73,6 +81,7 @@ export default function AdminDashboard() {
       unsubBuses();
       unsubSos();
       unsubAnn();
+      unsubRoutes();
     };
   }, [school]);
 
@@ -432,6 +441,7 @@ export default function AdminDashboard() {
         <div className="block w-full relative rounded-2xl overflow-hidden border border-slate-800 p-1" style={{ minHeight: '350px' }}>
           <GoogleMapComponent
             buses={formattedBuses}
+            routes={routes}
             zoom={12}
             showGeofences={false}
           />
